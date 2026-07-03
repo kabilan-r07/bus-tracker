@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TransitLive — Bus Tracker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+
+<!-- Firebase (real-time sync between driver and passenger devices) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+  // 1) Go to https://console.firebase.google.com -> Create project (free)
+  // 2) Build > Realtime Database -> Create Database -> Start in TEST mode
+  // 3) Project settings (gear icon) -> General -> Your apps -> Web app (</> icon) -> copy the config below
+  const firebaseConfig = {
+    apiKey: "PASTE_YOUR_API_KEY",
+    authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "PASTE_YOUR_PROJECT",
+    storageBucket: "PASTE_YOUR_PROJECT.appspot.com",
+    messagingSenderId: "PASTE_YOUR_SENDER_ID",
+    appId: "PASTE_YOUR_APP_ID"
+  };
+  firebase.initializeApp(firebaseConfig);
+</script>
+<style>
+  :root{
+    --navy: #0B1F3A;
+    --navy-light: #16305A;
+    --concrete: #E9E7E1;
+    --amber: #FFB81C;
+    --green: #1E7B34;
+    --red: #C63B2F;
+    --white: #FBFAF7;
+    --ink: #10161F;
+    --line: rgba(11,31,58,0.14);
+    --mono: 'Courier New', Courier, monospace;
+    --disp: Impact, 'Arial Narrow Bold', 'Helvetica Neue', Arial, sans-serif;
+    --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background: var(--concrete);
+    color: var(--ink);
+    font-family: var(--body);
+    overflow-x:hidden;
+  }
+
+  /* ---- top rail (like a route header board) ---- */
+  .rail{
+    background: var(--navy);
+    color: var(--white);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 14px 20px;
+    border-bottom: 4px solid var(--amber);
+  }
+  .brand{
+    display:flex; align-items:center; gap:12px;
+  }
+  .brand .badge{
+    width:40px;height:40px;border-radius:6px;
+    background: var(--amber);
+    color: var(--navy);
+    font-family: var(--disp);
+    font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;
+    letter-spacing:0.5px;
+    transform: skewX(-6deg);
+  }
+  .brand h1{
+    font-family: var(--disp);
+    font-weight: 400;
+    letter-spacing: 1px;
+    font-size: 22px;
+    text-transform: uppercase;
+  }
+  .brand span{
+    display:block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--amber);
+    text-transform: uppercase;
+  }
+
+  .modeSwitch{
+    display:flex;
+    background: var(--navy-light);
+    border-radius: 999px;
+    padding: 4px;
+    gap:4px;
+  }
+  .modeSwitch button{
+    border:none;
+    background:transparent;
+    color: var(--white);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 9px 18px;
+    border-radius: 999px;
+    cursor:pointer;
+    transition: all .2s ease;
+  }
+  .modeSwitch button.active{
+    background: var(--amber);
+    color: var(--navy);
+    font-weight:700;
+  }
+
+  /* ---- layout ---- */
+  .stage{
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 22px 20px 60px;
+  }
+  .view{ display:none; }
+  .view.active{ display:block; }
+
+  .grid{
+    display:grid;
+    grid-template-columns: 340px 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 860px){
+    .grid{ grid-template-columns: 1fr; }
+  }
+
+  .panel{
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .panelHead{
+    background: var(--navy);
+    color: var(--white);
+    padding: 10px 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .panelHead .dot{
+    width:8px;height:8px;border-radius:50%;
+    background: var(--amber);
+  }
+  .panelBody{ padding: 18px; }
+
+  label{
+    display:block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--navy);
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  label:first-child{ margin-top:0; }
+  input[type=text], select{
+    width:100%;
+    padding: 11px 12px;
+    border: 2px solid var(--line);
+    border-radius: 6px;
+    font-family: var(--body);
+    font-size: 14px;
+    background: var(--concrete);
+    color: var(--ink);
+  }
+  input[type=text]:focus, select:focus{
+    outline:none;
+    border-color: var(--navy);
+  }
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:100%;
+    margin-top: 18px;
+    padding: 13px 16px;
+    border-radius: 6px;
+    border: none;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight:700;
+    cursor:pointer;
+    transition: transform .1s ease, filter .15s ease;
+  }
+  .btn:active{ transform: scale(0.98); }
+  .btn-go{ background: var(--green); color: var(--white); }
+  .btn-go:hover{ filter: brightness(1.08); }
+  .btn-stop{ background: var(--red); color: var(--white); }
+  .btn-ghost{ background: transparent; color: var(--navy); border: 2px solid var(--navy); }
+
+  .statusCard{
+    margin-top: 20px;
+    border-radius: 8px;
+    padding: 16px;
+    background: var(--navy);
+    color: var(--white);
+    display:flex;
+    align-items:center;
+    gap: 14px;
+  }
+  .pulse{
+    width: 14px; height:14px; border-radius:50%;
+    background: var(--red);
+    flex-shrink:0;
+  }
+  .pulse.live{
+    background: var(--green);
+    box-shadow: 0 0 0 rgba(30,123,52,.6);
+    animation: pulseAnim 1.6s infinite;
+  }
+  @keyframes pulseAnim{
+    0%{ box-shadow: 0 0 0 0 rgba(30,123,52,.55); }
+    70%{ box-shadow: 0 0 0 10px rgba(30,123,52,0); }
+    100%{ box-shadow: 0 0 0 0 rgba(30,123,52,0); }
+  }
+  .statusCard .label{
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--amber);
+  }
+  .statusCard .value{
+    font-family: var(--disp);
+    font-size: 20px;
+    letter-spacing:.5px;
+    text-transform: uppercase;
+  }
+
+  .metrics{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .metric{
+    background: var(--concrete);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .metric .k{
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing:1.5px;
+    text-transform: uppercase;
+    color: #6b7280;
+  }
+  .metric .v{
+    font-family: var(--mono);
+    font-size: 20px;
+    color: var(--navy);
+    margin-top:2px;
+  }
+
+  #map{
+    width:100%;
+    height: 520px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+  }
+
+  .board{
+    margin-top: 18px;
+  }
+  .boardRow{
+    display:grid;
+    grid-template-columns: 56px 1fr auto auto;
+    align-items:center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--white);
+  }
+  .boardRow:last-child{ border-bottom:none; }
+  .routeChip{
+    width:44px; height:44px;
+    border-radius:6px;
+    background: var(--amber);
+    color: var(--navy);
+    font-family: var(--disp);
+    font-size: 16px;
+    display:flex; align-items:center; justify-content:center;
+    transform: skewX(-6deg);
+  }
+  .boardMeta .name{
+    font-weight:700;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .boardMeta .sub{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #6b7280;
+    letter-spacing: .5px;
+    margin-top: 2px;
+  }
+  .boardEta{
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--navy);
+    text-align:right;
+  }
+  .boardEta .u{
+    font-size: 10px;
+    letter-spacing:1px;
+    color: #6b7280;
+    display:block;
+  }
+  .followBtn{
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: var(--navy);
+    color: var(--white);
+    border: none;
+    cursor:pointer;
+  }
+
+  .emptyState{
+    padding: 40px 20px;
+    text-align:center;
+    color: #6b7280;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: .5px;
+  }
+
+  .hint{
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 14px;
+    line-height:1.5;
+  }
+  .hint b{ color: var(--navy); }
+
+  .leaflet-popup-content{
+    font-family: var(--body);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<div class="rail">
+  <div class="brand">
+    <div class="badge">TL</div>
+    <div>
+      <h1>TransitLive</h1>
+      <span>Live Bus Tracking Network</span>
+    </div>
+  </div>
+  <div class="modeSwitch">
+    <button id="btnDriverMode" class="active">Driver</button>
+    <button id="btnPassengerMode">Passenger</button>
+  </div>
+</div>
+
+<div class="stage">
+
+  <!-- ============ DRIVER VIEW ============ -->
+  <div id="driverView" class="view active">
+    <div class="grid">
+      <div class="panel">
+        <div class="panelHead"><span>Driver Console</span><div class="dot"></div></div>
+        <div class="panelBody">
+          <label for="drvName">Driver name</label>
+          <input type="text" id="drvName" placeholder="e.g. R. Kumar" />
+
+          <label for="busId">Bus ID</label>
+          <input type="text" id="busId" placeholder="e.g. TN-09-4521" />
+
+          <label for="routeNum">Route number / name</label>
+          <input type="text" id="routeNum" placeholder="e.g. 45B — Anna Nagar to T. Nagar" />
+
+          <button id="startShare" class="btn btn-go">Start Broadcasting</button>
+          <button id="stopShare" class="btn btn-stop" style="display:none;">Stop Broadcasting</button>
+
+          <div class="statusCard">
+            <div class="pulse" id="drvPulse"></div>
+            <div>
+              <div class="label">Status</div>
+              <div class="value" id="drvStatusText">Offline</div>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric"><div class="k">Speed</div><div class="v" id="mSpeed">–</div></div>
+            <div class="metric"><div class="k">Accuracy</div><div class="v" id="mAcc">–</div></div>
+            <div class="metric"><div class="k">Last update</div><div class="v" id="mTime">–</div></div>
+            <div class="metric"><div class="k">Route</div><div class="v" id="mRoute">–</div></div>
+          </div>
+
+          <p class="hint">Location updates broadcast every ~5 seconds while active, visible to all passengers watching this route. If your browser blocks location access, use <b>Simulate movement</b> below to demo the app.</p>
+          <button id="simulateBtn" class="btn btn-ghost">Simulate movement (demo)</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panelHead"><span>Live Position Preview</span><div class="dot"></div></div>
+        <div class="panelBody" style="padding:0;">
+          <div id="driverMap" style="height:520px; border-radius:0;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PASSENGER VIEW ============ -->
+  <div id="passengerView" class="view">
+    <div class="grid">
+      <div class="panel">
+        <div class="panelHead"><span>Find your bus</span><div class="dot"></div></div>
+        <div class="panelBody">
+          <label for="filterRoute">Filter by route (optional)</label>
+          <input type="text" id="filterRoute" placeholder="e.g. 45B" />
+
+          <button id="dropStopBtn" class="btn btn-ghost">Drop a stop pin on map</button>
+          <p class="hint" id="stopHint">Click the map to mark where you're waiting, then ETAs will be calculated to that point.</p>
+
+          <div class="board" id="board">
+            <div class="emptyState">No buses broadcasting yet.<br>Ask a driver to start broadcasting from the Driver tab.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panelHead"><span>Live Map</span><div class="dot"></div></div>
+        <div class="panelBody" style="padding:0;">
+          <div id="map" style="border-radius:0;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+(function(){
+
+  const DEFAULT_CENTER = [13.0827, 80.2707]; // Chennai fallback
+  const DEFAULT_ZOOM = 12;
+
+  /* ---------------- mode switching ---------------- */
+  const btnDriverMode = document.getElementById('btnDriverMode');
+  const btnPassengerMode = document.getElementById('btnPassengerMode');
+  const driverView = document.getElementById('driverView');
+  const passengerView = document.getElementById('passengerView');
+
+  btnDriverMode.addEventListener('click', () => setMode('driver'));
+  btnPassengerMode.addEventListener('click', () => setMode('passenger'));
+
+  function setMode(mode){
+    if(mode === 'driver'){
+      btnDriverMode.classList.add('active');
+      btnPassengerMode.classList.remove('active');
+      driverView.classList.add('active');
+      passengerView.classList.remove('active');
+      setTimeout(()=> driverMap && driverMap.invalidateSize(), 50);
+    } else {
+      btnPassengerMode.classList.add('active');
+      btnDriverMode.classList.remove('active');
+      passengerView.classList.add('active');
+      driverView.classList.remove('active');
+      setTimeout(()=> passMap && passMap.invalidateSize(), 50);
+      refreshBoard();
+    }
+  }
+
+  /* ---------------- storage helpers (Firebase Realtime Database) ---------------- */
+  // Buses are stored at /buses/{busId} in the Firebase Realtime Database.
+  async function saveBus(busId, data){
+    try{
+      await firebase.database().ref('buses/' + busId).set(data);
+      return true;
+    } catch(e){ console.error('save failed', e); return false; }
+  }
+  async function deleteBus(busId){
+    try{ await firebase.database().ref('buses/' + busId).remove(); } catch(e){}
+  }
+  async function listBuses(){
+    try{
+      const snap = await firebase.database().ref('buses').once('value');
+      const val = snap.val();
+      if(!val) return [];
+      return Object.values(val);
+    } catch(e){ console.error('list failed', e); return []; }
+  }
+
+  /* ---------------- DRIVER LOGIC ---------------- */
+  const driverMap = L.map('driverMap').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+  }).addTo(driverMap);
+  let driverMarker = null;
+
+  const startBtn = document.getElementById('startShare');
+  const stopBtn = document.getElementById('stopShare');
+  const simulateBtn = document.getElementById('simulateBtn');
+  const drvPulse = document.getElementById('drvPulse');
+  const drvStatusText = document.getElementById('drvStatusText');
+  const mSpeed = document.getElementById('mSpeed');
+  const mAcc = document.getElementById('mAcc');
+  const mTime = document.getElementById('mTime');
+  const mRoute = document.getElementById('mRoute');
+
+  let watchId = null;
+  let simInterval = null;
+  let currentBusId = null;
+
+  function setBroadcasting(on){
+    startBtn.style.display = on ? 'none' : 'inline-flex';
+    stopBtn.style.display = on ? 'inline-flex' : 'none';
+    drvPulse.classList.toggle('live', on);
+    drvStatusText.textContent = on ? 'Broadcasting' : 'Offline';
+  }
+
+  function updateDriverUI(lat, lng, speed, acc){
+    if(!driverMarker){
+      driverMarker = L.marker([lat,lng]).addTo(driverMap);
+    } else {
+      driverMarker.setLatLng([lat,lng]);
+    }
+    driverMap.setView([lat,lng], 15);
+    mSpeed.textContent = (speed!=null && !isNaN(speed)) ? Math.round(speed*3.6) + ' km/h' : '—';
+    mAcc.textContent = acc ? Math.round(acc) + ' m' : '—';
+    mTime.textContent = new Date().toLocaleTimeString();
+  }
+
+  async function broadcastPosition(lat, lng, speed, heading){
+    if(!currentBusId) return;
+    const data = {
+      busId: currentBusId,
+      driver: document.getElementById('drvName').value || 'Unknown driver',
+      route: document.getElementById('routeNum').value || 'Unassigned',
+      lat, lng,
+      speed: speed || 0,
+      heading: heading || 0,
+      updatedAt: Date.now()
+    };
+    await saveBus(currentBusId, data);
+    mRoute.textContent = data.route;
+    updateDriverUI(lat, lng, speed, null);
+  }
+
+  startBtn.addEventListener('click', () => {
+    const busId = document.getElementById('busId').value.trim();
+    if(!busId){ alert('Please enter a Bus ID before broadcasting.'); return; }
+    currentBusId = busId;
+
+    if(!navigator.geolocation){
+      alert('Geolocation not supported in this browser. Try Simulate movement instead.');
+      return;
+    }
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude, speed, heading, accuracy } = pos.coords;
+        broadcastPosition(latitude, longitude, speed, heading);
+        mAcc.textContent = accuracy ? Math.round(accuracy) + ' m' : '—';
+      },
+      (err) => {
+        console.warn('Geolocation error', err);
+        alert('Could not access location (' + err.message + '). Try Simulate movement instead.');
+      },
+      { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
+    );
+    setBroadcasting(true);
+  });
+
+  stopBtn.addEventListener('click', async () => {
+    if(watchId !== null){ navigator.geolocation.clearWatch(watchId); watchId = null; }
+    if(simInterval){ clearInterval(simInterval); simInterval = null; }
+    if(currentBusId){ await deleteBus(currentBusId); }
+    setBroadcasting(false);
+  });
+
+  // Simulated movement for demo purposes (no real GPS needed)
+  simulateBtn.addEventListener('click', () => {
+    const busId = document.getElementById('busId').value.trim();
+    if(!busId){ alert('Please enter a Bus ID first.'); return; }
+    currentBusId = busId;
+    setBroadcasting(true);
+
+    let lat = DEFAULT_CENTER[0] + (Math.random()-0.5)*0.05;
+    let lng = DEFAULT_CENTER[1] + (Math.random()-0.5)*0.05;
+    const bearing = Math.random()*2*Math.PI;
+    const dLat = Math.cos(bearing)*0.0009;
+    const dLng = Math.sin(bearing)*0.0009;
+
+    if(simInterval) clearInterval(simInterval);
+    simInterval = setInterval(() => {
+      lat += dLat + (Math.random()-0.5)*0.0003;
+      lng += dLng + (Math.random()-0.5)*0.0003;
+      const fakeSpeed = 6 + Math.random()*4; // m/s ~ 22-36 km/h
+      broadcastPosition(lat, lng, fakeSpeed, 0);
+    }, 3000);
+  });
+
+  /* ---------------- PASSENGER LOGIC ---------------- */
+  const passMap = L.map('map').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+  }).addTo(passMap);
+
+  const busMarkers = {};
+  let stopMarker = null;
+  let stopLatLng = null;
+  let droppingStop = false;
+
+  const dropStopBtn = document.getElementById('dropStopBtn');
+  const stopHint = document.getElementById('stopHint');
+  const filterInput = document.getElementById('filterRoute');
+  const board = document.getElementById('board');
+
+  dropStopBtn.addEventListener('click', () => {
+    droppingStop = true;
+    stopHint.textContent = 'Click anywhere on the map to place your stop.';
+  });
+
+  passMap.on('click', (e) => {
+    if(!droppingStop) return;
+    stopLatLng = e.latlng;
+    if(stopMarker) passMap.removeLayer(stopMarker);
+    const stopIcon = L.divIcon({
+      className: '',
+      html: '<div style="background:#C63B2F;width:16px;height:16px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;"></div>',
+      iconSize: [16,16]
+    });
+    stopMarker = L.marker(stopLatLng, {icon: stopIcon}).addTo(passMap).bindPopup('Your stop');
+    droppingStop = false;
+    stopHint.textContent = 'Stop pin placed. ETAs below are estimated from live bus speed and distance.';
+    refreshBoard();
+  });
+
+  filterInput.addEventListener('input', refreshBoard);
+
+  function haversine(lat1, lng1, lat2, lng2){
+    const R = 6371000;
+    const toRad = d => d * Math.PI/180;
+    const dLat = toRad(lat2-lat1);
+    const dLng = toRad(lng2-lng1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  function busIcon(){
+    return L.divIcon({
+      className: '',
+      html: '<div style="background:#0B1F3A;color:#FFB81C;width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;font-weight:bold;font-size:14px;border:2px solid #FFB81C;box-shadow:0 2px 6px rgba(0,0,0,0.3);">🚌</div>',
+      iconSize: [30,30],
+      iconAnchor: [15,15]
+    });
+  }
+
+  async function refreshBoard(){
+    const buses = await listBuses();
+    const now = Date.now();
+    const filterVal = filterInput.value.trim().toLowerCase();
+
+    const active = buses.filter(b => (now - b.updatedAt) < 30000); // stale after 30s
+
+    const filtered = filterVal
+      ? active.filter(b => (b.route||'').toLowerCase().includes(filterVal) || (b.busId||'').toLowerCase().includes(filterVal))
+      : active;
+
+    // update markers
+    const seen = new Set();
+    filtered.forEach(b => {
+      seen.add(b.busId);
+      const ll = [b.lat, b.lng];
+      if(busMarkers[b.busId]){
+        busMarkers[b.busId].setLatLng(ll);
+      } else {
+        busMarkers[b.busId] = L.marker(ll, {icon: busIcon()}).addTo(passMap);
+      }
+      busMarkers[b.busId].bindPopup(
+        '<b>' + escapeHtml(b.route) + '</b><br>Bus ' + escapeHtml(b.busId) +
+        '<br>Driver: ' + escapeHtml(b.driver) +
+        '<br>Speed: ' + Math.round((b.speed||0)*3.6) + ' km/h'
+      );
+    });
+    Object.keys(busMarkers).forEach(id => {
+      if(!seen.has(id)){ passMap.removeLayer(busMarkers[id]); delete busMarkers[id]; }
+    });
+
+    // board
+    if(filtered.length === 0){
+      board.innerHTML = '<div class="emptyState">No buses broadcasting yet.<br>Ask a driver to start broadcasting from the Driver tab.</div>';
+      return;
+    }
+
+    filtered.sort((a,b) => {
+      if(!stopLatLng) return a.route.localeCompare(b.route);
+      const da = haversine(stopLatLng.lat, stopLatLng.lng, a.lat, a.lng);
+      const db = haversine(stopLatLng.lat, stopLatLng.lng, b.lat, b.lng);
+      return da - db;
+    });
+
+    board.innerHTML = filtered.map(b => {
+      const routeShort = (b.route||'?').split(/[\s—-]/)[0].slice(0,3).toUpperCase();
+      let etaHtml = '<div class="boardEta">LIVE<span class="u">tracking</span></div>';
+      if(stopLatLng){
+        const distM = haversine(stopLatLng.lat, stopLatLng.lng, b.lat, b.lng);
+        const speedMs = b.speed && b.speed > 1 ? b.speed : 6; // assume ~22km/h if stationary
+        const etaMin = Math.max(1, Math.round((distM/speedMs)/60));
+        const distKm = (distM/1000).toFixed(1);
+        etaHtml = '<div class="boardEta">' + etaMin + ' min<span class="u">' + distKm + ' km away</span></div>';
+      }
+      return '<div class="boardRow">' +
+        '<div class="routeChip">' + escapeHtml(routeShort) + '</div>' +
+        '<div class="boardMeta"><div class="name">' + escapeHtml(b.route||'Unassigned route') + '</div>' +
+        '<div class="sub">Bus ' + escapeHtml(b.busId) + ' · ' + escapeHtml(b.driver||'') + '</div></div>' +
+        etaHtml +
+        '<button class="followBtn" onclick="window.__followBus('+"'"+b.busId+"'"+')">Follow</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  window.__followBus = function(busId){
+    const m = busMarkers[busId];
+    if(m){ passMap.setView(m.getLatLng(), 16); m.openPopup(); }
+  };
+
+  function escapeHtml(str){
+    return String(str||'').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+  }
+
+  // poll for updates
+  setInterval(refreshBoard, 4000);
+  refreshBoard();
+
+})();
+</script>
+</body>
+</html>
