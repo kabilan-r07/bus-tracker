@@ -2,171 +2,216 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TransitLive — Bus Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PrinceCollege Transit — Live Bus Board</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <!-- Firebase Realtime Database, accessed via plain REST (fetch) instead of the SDK's -->
 <!-- long-polling connection, since some networks block the SDK's persistent channel. -->
 <script>
   const FIREBASE_DB_URL = "https://bus-tracker-c9c75-default-rtdb.firebaseio.com";
 </script>
+
 <style>
   :root{
-    --navy: #0B1F3A;
-    --navy-light: #16305A;
-    --concrete: #E9E7E1;
-    --amber: #FFB81C;
-    --green: #1E7B34;
-    --red: #C63B2F;
-    --white: #FBFAF7;
-    --ink: #10161F;
-    --line: rgba(11,31,58,0.14);
-    --mono: 'Courier New', Courier, monospace;
-    --disp: Impact, 'Arial Narrow Bold', 'Helvetica Neue', Arial, sans-serif;
-    --body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --ink:#0A1526;
+    --panel:#0F1E38;
+    --panel-2:#0B1730;
+    --paper:#F5F1E7;
+    --paper-dim:#E7E0CE;
+    --amber:#FFC53D;
+    --amber-dim:#B98A1E;
+    --green:#37B27C;
+    --red:#E15241;
+    --line: rgba(245,241,231,0.14);
+    --line-dark: rgba(10,21,38,0.12);
+    --shadow: 0 12px 32px rgba(4,10,22,0.28);
+    --font-display:'Space Grotesk', 'Arial Narrow', sans-serif;
+    --font-body:'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono:'JetBrains Mono','Courier New', monospace;
+    --radius: 12px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{height:100%;}
   body{
-    background: var(--concrete);
-    color: var(--ink);
-    font-family: var(--body);
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
     overflow-x:hidden;
   }
+  :focus-visible{ outline: 2px solid var(--amber); outline-offset: 2px; }
+  button, input, select{ font: inherit; }
 
-  /* ---- top rail (like a route header board) ---- */
+  /* ================= HEADER / SPLIT-FLAP RAIL ================= */
   .rail{
-    background: var(--navy);
-    color: var(--white);
+    background: linear-gradient(180deg, var(--panel-2), var(--ink));
+    border-bottom: 1px solid var(--line);
+    padding: 14px clamp(14px, 4vw, 28px);
     display:flex;
     align-items:center;
     justify-content:space-between;
-    padding: 14px 20px;
-    border-bottom: 4px solid var(--amber);
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 40;
   }
-  .brand{
-    display:flex; align-items:center; gap:12px;
+  .brand{ display:flex; align-items:center; gap:14px; min-width:0; }
+  .brand .mark{
+    display:flex; gap:2px; flex-shrink:0;
   }
-  .brand .badge{
-    width:40px;height:40px;border-radius:6px;
-    background: var(--amber);
-    color: var(--navy);
-    font-family: var(--disp);
+  .flapLetter{
+    width: 22px; height: 30px;
+    background: linear-gradient(180deg,#182A4B,#0C1830);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 3px;
+    display:flex; align-items:center; justify-content:center;
+    font-family: var(--font-mono);
     font-weight:700;
-    display:flex;align-items:center;justify-content:center;
-    font-size:20px;
-    letter-spacing:0.5px;
-    transform: skewX(-6deg);
-  }
-  .brand h1{
-    font-family: var(--disp);
-    font-weight: 400;
-    letter-spacing: 1px;
-    font-size: 22px;
-    text-transform: uppercase;
-  }
-  .brand span{
-    display:block;
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 2px;
+    font-size: 15px;
     color: var(--amber);
+    position: relative;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -6px 8px rgba(0,0,0,0.35);
+  }
+  .flapLetter::after{
+    content:"";
+    position:absolute; left:0; right:0; top:50%;
+    height:1px; background: rgba(0,0,0,0.55);
+  }
+  .brandText{ min-width:0; }
+  .brandText h1{
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(14px, 2.4vw, 17px);
+    letter-spacing: .3px;
+    color: var(--paper);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .brandText span{
+    display:block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 2px;
+    color: var(--amber-dim);
     text-transform: uppercase;
+    margin-top: 2px;
   }
 
   .modeSwitch{
     display:flex;
-    background: var(--navy-light);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
     border-radius: 999px;
-    padding: 4px;
-    gap:4px;
+    padding: 3px;
+    gap:2px;
+    flex-shrink:0;
   }
   .modeSwitch button{
     border:none;
     background:transparent;
-    color: var(--white);
-    font-family: var(--mono);
-    font-size: 12px;
+    color: var(--paper-dim);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    padding: 9px 18px;
+    padding: 9px 16px;
     border-radius: 999px;
     cursor:pointer;
-    transition: all .2s ease;
+    transition: background .18s ease, color .18s ease;
+    white-space:nowrap;
   }
   .modeSwitch button.active{
     background: var(--amber);
-    color: var(--navy);
+    color: var(--ink);
     font-weight:700;
   }
+  .modeSwitch button:not(.active):hover{ color: var(--paper); }
 
-  /* ---- layout ---- */
+  /* ================= LAYOUT ================= */
   .stage{
-    max-width: 1180px;
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 22px 20px 60px;
+    padding: clamp(14px, 3vw, 26px) clamp(14px, 4vw, 28px) 60px;
   }
   .view{ display:none; }
-  .view.active{ display:block; }
+  .view.active{ display:block; animation: fadeIn .25s ease; }
+  @keyframes fadeIn{ from{opacity:0; transform: translateY(4px);} to{opacity:1; transform:none;} }
 
   .grid{
     display:grid;
-    grid-template-columns: 340px 1fr;
+    grid-template-columns: minmax(300px, 360px) 1fr;
     gap: 18px;
+    align-items:start;
   }
-  @media (max-width: 860px){
+  @media (max-width: 900px){
     .grid{ grid-template-columns: 1fr; }
   }
 
   .panel{
-    background: var(--white);
+    background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius);
     overflow: hidden;
+    box-shadow: var(--shadow);
   }
   .panelHead{
-    background: var(--navy);
-    color: var(--white);
-    padding: 10px 16px;
-    font-family: var(--mono);
-    font-size: 12px;
+    padding: 12px 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
     letter-spacing: 2px;
     text-transform: uppercase;
+    color: var(--paper-dim);
     display:flex;
     align-items:center;
     justify-content:space-between;
+    border-bottom: 1px solid var(--line);
   }
-  .panelHead .dot{
-    width:8px;height:8px;border-radius:50%;
-    background: var(--amber);
+  .panelHead .liveDot{
+    width:7px;height:7px;border-radius:50%;
+    background: var(--red);
+    flex-shrink:0;
+  }
+  .panelHead .liveDot.on{
+    background: var(--green);
+    box-shadow: 0 0 0 rgba(55,178,124,.6);
+    animation: pulseAnim 1.8s infinite;
+  }
+  @keyframes pulseAnim{
+    0%{ box-shadow: 0 0 0 0 rgba(55,178,124,.55); }
+    70%{ box-shadow: 0 0 0 9px rgba(55,178,124,0); }
+    100%{ box-shadow: 0 0 0 0 rgba(55,178,124,0); }
   }
   .panelBody{ padding: 18px; }
 
   label{
     display:block;
-    font-family: var(--mono);
-    font-size: 11px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--navy);
-    margin-bottom: 6px;
+    color: var(--paper-dim);
+    margin-bottom: 7px;
     margin-top: 16px;
   }
   label:first-child{ margin-top:0; }
-  input[type=text], select{
+  input[type=text]{
     width:100%;
-    padding: 11px 12px;
-    border: 2px solid var(--line);
-    border-radius: 6px;
-    font-family: var(--body);
+    padding: 12px 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-family: var(--font-body);
     font-size: 14px;
-    background: var(--concrete);
-    color: var(--ink);
+    background: rgba(255,255,255,0.04);
+    color: var(--paper);
   }
-  input[type=text]:focus, select:focus{
+  input[type=text]::placeholder{ color: rgba(245,241,231,0.32); }
+  input[type=text]:focus{
     outline:none;
-    border-color: var(--navy);
+    border-color: var(--amber);
+    background: rgba(255,255,255,0.06);
   }
 
   .btn{
@@ -177,59 +222,54 @@
     width:100%;
     margin-top: 18px;
     padding: 13px 16px;
-    border-radius: 6px;
+    border-radius: 8px;
     border: none;
-    font-family: var(--mono);
-    font-size: 13px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     font-weight:700;
     cursor:pointer;
-    transition: transform .1s ease, filter .15s ease;
+    transition: filter .15s ease, transform .08s ease;
   }
   .btn:active{ transform: scale(0.98); }
-  .btn-go{ background: var(--green); color: var(--white); }
-  .btn-go:hover{ filter: brightness(1.08); }
-  .btn-stop{ background: var(--red); color: var(--white); }
-  .btn-ghost{ background: transparent; color: var(--navy); border: 2px solid var(--navy); }
+  .btn-go{ background: var(--green); color: #06251a; }
+  .btn-go:hover{ filter: brightness(1.1); }
+  .btn-stop{ background: var(--red); color: #2a0805; }
+  .btn-stop:hover{ filter: brightness(1.1); }
+  .btn-ghost{ background: transparent; color: var(--paper); border: 1px solid var(--line); }
+  .btn-ghost:hover{ border-color: var(--amber); color: var(--amber); }
 
   .statusCard{
     margin-top: 20px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 16px;
-    background: var(--navy);
-    color: var(--white);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
     display:flex;
     align-items:center;
     gap: 14px;
   }
-  .pulse{
-    width: 14px; height:14px; border-radius:50%;
-    background: var(--red);
-    flex-shrink:0;
+  .ring{
+    width: 40px; height:40px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    border: 2px solid var(--red);
+    transition: border-color .2s ease;
   }
-  .pulse.live{
-    background: var(--green);
-    box-shadow: 0 0 0 rgba(30,123,52,.6);
-    animation: pulseAnim 1.6s infinite;
-  }
-  @keyframes pulseAnim{
-    0%{ box-shadow: 0 0 0 0 rgba(30,123,52,.55); }
-    70%{ box-shadow: 0 0 0 10px rgba(30,123,52,0); }
-    100%{ box-shadow: 0 0 0 0 rgba(30,123,52,0); }
-  }
+  .ring .core{ width:12px; height:12px; border-radius:50%; background: var(--red); transition: background .2s ease; }
+  .ring.live{ border-color: var(--green); }
+  .ring.live .core{ background: var(--green); animation: pulseAnim 1.8s infinite; }
   .statusCard .label{
-    font-family: var(--mono);
-    font-size: 11px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    color: var(--amber);
+    color: var(--amber-dim);
   }
   .statusCard .value{
-    font-family: var(--disp);
-    font-size: 20px;
-    letter-spacing:.5px;
-    text-transform: uppercase;
+    font-family: var(--font-display);
+    font-size: 18px;
+    letter-spacing:.3px;
   }
 
   .metrics{
@@ -239,111 +279,189 @@
     margin-top: 16px;
   }
   .metric{
-    background: var(--concrete);
-    border-radius: 6px;
-    padding: 10px 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 11px 13px;
   }
   .metric .k{
-    font-family: var(--mono);
-    font-size: 10px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
     letter-spacing:1.5px;
     text-transform: uppercase;
-    color: #6b7280;
+    color: var(--paper-dim);
+    opacity:.75;
   }
   .metric .v{
-    font-family: var(--mono);
-    font-size: 20px;
-    color: var(--navy);
-    margin-top:2px;
-  }
-
-  #map{
-    width:100%;
-    height: 520px;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-  }
-
-  .board{
-    margin-top: 18px;
-  }
-  .boardRow{
-    display:grid;
-    grid-template-columns: 56px 1fr auto auto;
-    align-items:center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--line);
-    background: var(--white);
-  }
-  .boardRow:last-child{ border-bottom:none; }
-  .routeChip{
-    width:44px; height:44px;
-    border-radius:6px;
-    background: var(--amber);
-    color: var(--navy);
-    font-family: var(--disp);
-    font-size: 16px;
-    display:flex; align-items:center; justify-content:center;
-    transform: skewX(-6deg);
-  }
-  .boardMeta .name{
-    font-weight:700;
-    font-size: 14px;
-    color: var(--ink);
-  }
-  .boardMeta .sub{
-    font-family: var(--mono);
-    font-size: 11px;
-    color: #6b7280;
-    letter-spacing: .5px;
-    margin-top: 2px;
-  }
-  .boardEta{
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 18px;
-    color: var(--navy);
-    text-align:right;
-  }
-  .boardEta .u{
-    font-size: 10px;
-    letter-spacing:1px;
-    color: #6b7280;
-    display:block;
-  }
-  .followBtn{
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 8px 10px;
-    border-radius: 4px;
-    background: var(--navy);
-    color: var(--white);
-    border: none;
-    cursor:pointer;
-  }
-
-  .emptyState{
-    padding: 40px 20px;
-    text-align:center;
-    color: #6b7280;
-    font-family: var(--mono);
-    font-size: 13px;
-    letter-spacing: .5px;
+    color: var(--amber);
+    margin-top:3px;
+    font-weight:600;
   }
 
   .hint{
     font-size: 12px;
-    color: #6b7280;
-    margin-top: 14px;
-    line-height:1.5;
+    color: var(--paper-dim);
+    margin-top: 16px;
+    line-height:1.55;
   }
-  .hint b{ color: var(--navy); }
+  .hint b{ color: var(--amber); font-weight:600; }
 
-  .leaflet-popup-content{
-    font-family: var(--body);
+  #driverMap, #map{
+    width:100%;
+    height: clamp(320px, 52vh, 520px);
+  }
+
+  /* ================= SPLIT-FLAP BOARD (signature element) ================= */
+  .board{ margin-top: 4px; max-height: 56vh; overflow-y:auto; }
+  .board::-webkit-scrollbar{ width:8px; }
+  .board::-webkit-scrollbar-thumb{ background: rgba(255,255,255,0.12); border-radius:4px; }
+
+  .flapRow{
+    display:grid;
+    grid-template-columns: 54px 1fr auto auto;
+    align-items:center;
+    gap: 12px;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  .flapRow:last-child{ border-bottom:none; }
+
+  .routeTile{
+    width:48px; height:44px;
+    border-radius:6px;
+    background: linear-gradient(180deg,#1B2E52,#0E1B36);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--amber);
+    font-family: var(--font-mono);
+    font-weight:700;
+    font-size: 14px;
+    letter-spacing: .5px;
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .routeTile::after{
+    content:""; position:absolute; left:2px; right:2px; top:50%; height:1px;
+    background: rgba(0,0,0,0.5);
+  }
+
+  .flapMeta{ min-width:0; }
+  .flapMeta .name{
+    font-weight:600;
+    font-size: 13.5px;
+    color: var(--paper);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .flapMeta .sub{
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--paper-dim);
+    letter-spacing: .4px;
+    margin-top: 3px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  .flapEta{
+    font-family: var(--font-mono);
+    font-size: 17px;
+    color: var(--amber);
+    text-align:right;
+    font-weight:700;
+    transform-style: preserve-3d;
+    transform-origin: center;
+  }
+  .flapEta.flap-anim{ animation: flapFlip .42s ease; }
+  @keyframes flapFlip{
+    0%{ transform: rotateX(0deg); }
+    48%{ transform: rotateX(90deg); }
+    52%{ transform: rotateX(90deg); }
+    100%{ transform: rotateX(0deg); }
+  }
+  .flapEta .u{
+    font-size: 9.5px;
+    letter-spacing:1px;
+    color: var(--paper-dim);
+    display:block;
+    font-weight:400;
+    margin-top:2px;
+  }
+
+  .followBtn{
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--paper);
+    border: 1px solid var(--line);
+    cursor:pointer;
+    transition: border-color .15s ease, color .15s ease;
+    white-space:nowrap;
+  }
+  .followBtn:hover{ border-color: var(--amber); color: var(--amber); }
+
+  .emptyState{
+    padding: 44px 16px;
+    text-align:center;
+    color: var(--paper-dim);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    letter-spacing: .4px;
+    line-height:1.8;
+  }
+  .emptyState .big{
+    font-family: var(--font-display);
+    font-size: 15px;
+    color: var(--paper);
+    display:block;
+    margin-bottom: 6px;
+  }
+
+  .filterRow{ display:flex; gap:8px; }
+  .filterRow input{ flex:1; }
+
+  /* ================= TOASTS ================= */
+  #toasts{
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    width: min(360px, calc(100vw - 28px));
+  }
+  .toast{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--amber);
+    color: var(--paper);
+    padding: 12px 14px;
+    border-radius: 8px;
     font-size: 13px;
+    box-shadow: var(--shadow);
+    animation: toastIn .2s ease;
+  }
+  .toast.err{ border-left-color: var(--red); }
+  @keyframes toastIn{ from{ opacity:0; transform: translateY(8px);} to{opacity:1; transform:none;} }
+
+  .leaflet-popup-content{ font-family: var(--font-body); font-size: 13px; }
+  .leaflet-popup-content b{ font-family: var(--font-display); }
+
+  @media (max-width: 640px){
+    .panelBody{ padding: 14px; }
+    .flapRow{ grid-template-columns: 42px 1fr auto; }
+    .followBtn{ display:none; }
+    .brandText span{ display:none; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
   }
 </style>
 </head>
@@ -351,15 +469,18 @@
 
 <div class="rail">
   <div class="brand">
-    <div class="badge">TL</div>
-    <div>
-      <h1>TransitLive</h1>
-      <span>Live Bus Tracking Network</span>
+    <div class="mark" aria-hidden="true">
+      <div class="flapLetter">P</div>
+      <div class="flapLetter">C</div>
+    </div>
+    <div class="brandText">
+      <h1>PrinceCollege Transit</h1>
+      <span>Live bus board</span>
     </div>
   </div>
-  <div class="modeSwitch">
-    <button id="btnDriverMode" class="active">Driver</button>
-    <button id="btnPassengerMode">Passenger</button>
+  <div class="modeSwitch" role="tablist" aria-label="View mode">
+    <button id="btnDriverMode" class="active" role="tab" aria-selected="true">Driver</button>
+    <button id="btnPassengerMode" role="tab" aria-selected="false">Passenger</button>
   </div>
 </div>
 
@@ -369,7 +490,7 @@
   <div id="driverView" class="view active">
     <div class="grid">
       <div class="panel">
-        <div class="panelHead"><span>Driver Console</span><div class="dot"></div></div>
+        <div class="panelHead"><span>Driver console</span><div class="liveDot" id="drvLiveDot"></div></div>
         <div class="panelBody">
           <label for="drvName">Driver name</label>
           <input type="text" id="drvName" placeholder="e.g. R. Kumar" />
@@ -380,11 +501,11 @@
           <label for="routeNum">Route number / name</label>
           <input type="text" id="routeNum" placeholder="e.g. 45B — Anna Nagar to T. Nagar" />
 
-          <button id="startShare" class="btn btn-go">Start Broadcasting</button>
-          <button id="stopShare" class="btn btn-stop" style="display:none;">Stop Broadcasting</button>
+          <button id="startShare" class="btn btn-go">Start broadcasting</button>
+          <button id="stopShare" class="btn btn-stop" style="display:none;">Stop broadcasting</button>
 
           <div class="statusCard">
-            <div class="pulse" id="drvPulse"></div>
+            <div class="ring" id="drvRing"><div class="core"></div></div>
             <div>
               <div class="label">Status</div>
               <div class="value" id="drvStatusText">Offline</div>
@@ -398,16 +519,14 @@
             <div class="metric"><div class="k">Route</div><div class="v" id="mRoute">–</div></div>
           </div>
 
-          <p class="hint">Location updates broadcast every ~5 seconds while active, visible to all passengers watching this route. If your browser blocks location access, use <b>Simulate movement</b> below to demo the app.</p>
+          <p class="hint">Your location broadcasts every ~5 seconds while active, and is visible to every passenger watching this route. If your browser blocks location access, use <b>Simulate movement</b> to demo the app instead.</p>
           <button id="simulateBtn" class="btn btn-ghost">Simulate movement (demo)</button>
         </div>
       </div>
 
       <div class="panel">
-        <div class="panelHead"><span>Live Position Preview</span><div class="dot"></div></div>
-        <div class="panelBody" style="padding:0;">
-          <div id="driverMap" style="height:520px; border-radius:0;"></div>
-        </div>
+        <div class="panelHead"><span>Live position preview</span><div class="liveDot" id="drvMapDot"></div></div>
+        <div id="driverMap"></div>
       </div>
     </div>
   </div>
@@ -416,30 +535,34 @@
   <div id="passengerView" class="view">
     <div class="grid">
       <div class="panel">
-        <div class="panelHead"><span>Find your bus</span><div class="dot"></div></div>
+        <div class="panelHead"><span>Find your bus</span><div class="liveDot on"></div></div>
         <div class="panelBody">
-          <label for="filterRoute">Filter by route (optional)</label>
-          <input type="text" id="filterRoute" placeholder="e.g. 45B" />
+          <label for="filterRoute">Filter by route</label>
+          <div class="filterRow">
+            <input type="text" id="filterRoute" placeholder="e.g. 45B" />
+          </div>
 
-          <button id="dropStopBtn" class="btn btn-ghost">Drop a stop pin on map</button>
-          <p class="hint" id="stopHint">Click the map to mark where you're waiting, then ETAs will be calculated to that point.</p>
+          <label>Your stop</label>
+          <button id="dropStopBtn" class="btn btn-ghost" style="margin-top:0;">Drop a stop pin on map</button>
+          <p class="hint" id="stopHint">Click the map to mark where you're waiting — ETAs below will be calculated to that point.</p>
 
-          <div class="board" id="board">
-            <div class="emptyState">No buses broadcasting yet.<br>Ask a driver to start broadcasting from the Driver tab.</div>
+          <label style="margin-top:22px;">Departure board</label>
+          <div class="board" id="board" aria-live="polite">
+            <div class="emptyState"><span class="big">No buses broadcasting</span>Ask a driver to start broadcasting from the Driver tab.</div>
           </div>
         </div>
       </div>
 
       <div class="panel">
-        <div class="panelHead"><span>Live Map</span><div class="dot"></div></div>
-        <div class="panelBody" style="padding:0;">
-          <div id="map" style="border-radius:0;"></div>
-        </div>
+        <div class="panelHead"><span>Live map</span><div class="liveDot on"></div></div>
+        <div id="map"></div>
       </div>
     </div>
   </div>
 
 </div>
+
+<div id="toasts" aria-live="assertive"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
@@ -447,6 +570,16 @@
 
   const DEFAULT_CENTER = [13.0827, 80.2707]; // Chennai fallback
   const DEFAULT_ZOOM = 12;
+
+  /* ---------------- toast helper ---------------- */
+  const toastHost = document.getElementById('toasts');
+  function toast(msg, isErr){
+    const el = document.createElement('div');
+    el.className = 'toast' + (isErr ? ' err' : '');
+    el.textContent = msg;
+    toastHost.appendChild(el);
+    setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity .25s ease'; setTimeout(()=>el.remove(), 260); }, 3800);
+  }
 
   /* ---------------- mode switching ---------------- */
   const btnDriverMode = document.getElementById('btnDriverMode');
@@ -458,18 +591,17 @@
   btnPassengerMode.addEventListener('click', () => setMode('passenger'));
 
   function setMode(mode){
-    if(mode === 'driver'){
-      btnDriverMode.classList.add('active');
-      btnPassengerMode.classList.remove('active');
-      driverView.classList.add('active');
-      passengerView.classList.remove('active');
-      setTimeout(()=> driverMap && driverMap.invalidateSize(), 50);
+    const driverActive = mode === 'driver';
+    btnDriverMode.classList.toggle('active', driverActive);
+    btnDriverMode.setAttribute('aria-selected', driverActive);
+    btnPassengerMode.classList.toggle('active', !driverActive);
+    btnPassengerMode.setAttribute('aria-selected', !driverActive);
+    driverView.classList.toggle('active', driverActive);
+    passengerView.classList.toggle('active', !driverActive);
+    if(driverActive){
+      setTimeout(()=> driverMap && driverMap.invalidateSize(), 60);
     } else {
-      btnPassengerMode.classList.add('active');
-      btnDriverMode.classList.remove('active');
-      passengerView.classList.add('active');
-      driverView.classList.remove('active');
-      setTimeout(()=> passMap && passMap.invalidateSize(), 50);
+      setTimeout(()=> passMap && passMap.invalidateSize(), 60);
       refreshBoard();
     }
   }
@@ -510,7 +642,9 @@
   const startBtn = document.getElementById('startShare');
   const stopBtn = document.getElementById('stopShare');
   const simulateBtn = document.getElementById('simulateBtn');
-  const drvPulse = document.getElementById('drvPulse');
+  const drvRing = document.getElementById('drvRing');
+  const drvLiveDot = document.getElementById('drvLiveDot');
+  const drvMapDot = document.getElementById('drvMapDot');
   const drvStatusText = document.getElementById('drvStatusText');
   const mSpeed = document.getElementById('mSpeed');
   const mAcc = document.getElementById('mAcc');
@@ -524,7 +658,9 @@
   function setBroadcasting(on){
     startBtn.style.display = on ? 'none' : 'inline-flex';
     stopBtn.style.display = on ? 'inline-flex' : 'none';
-    drvPulse.classList.toggle('live', on);
+    drvRing.classList.toggle('live', on);
+    drvLiveDot.classList.toggle('on', on);
+    drvMapDot.classList.toggle('on', on);
     drvStatusText.textContent = on ? 'Broadcasting' : 'Offline';
   }
 
@@ -536,7 +672,7 @@
     }
     driverMap.setView([lat,lng], 15);
     mSpeed.textContent = (speed!=null && !isNaN(speed)) ? Math.round(speed*3.6) + ' km/h' : '—';
-    mAcc.textContent = acc ? Math.round(acc) + ' m' : '—';
+    if(acc) mAcc.textContent = Math.round(acc) + ' m';
     mTime.textContent = new Date().toLocaleTimeString();
   }
 
@@ -558,11 +694,11 @@
 
   startBtn.addEventListener('click', () => {
     const busId = document.getElementById('busId').value.trim();
-    if(!busId){ alert('Please enter a Bus ID before broadcasting.'); return; }
+    if(!busId){ toast('Enter a Bus ID before broadcasting.', true); return; }
     currentBusId = busId;
 
     if(!navigator.geolocation){
-      alert('Geolocation not supported in this browser. Try Simulate movement instead.');
+      toast('Geolocation not supported in this browser. Try Simulate movement instead.', true);
       return;
     }
     watchId = navigator.geolocation.watchPosition(
@@ -573,11 +709,12 @@
       },
       (err) => {
         console.warn('Geolocation error', err);
-        alert('Could not access location (' + err.message + '). Try Simulate movement instead.');
+        toast('Could not access location (' + err.message + '). Try Simulate movement instead.', true);
       },
       { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
     );
     setBroadcasting(true);
+    toast('Broadcasting started for bus ' + busId + '.');
   });
 
   stopBtn.addEventListener('click', async () => {
@@ -585,14 +722,16 @@
     if(simInterval){ clearInterval(simInterval); simInterval = null; }
     if(currentBusId){ await deleteBus(currentBusId); }
     setBroadcasting(false);
+    toast('Broadcasting stopped.');
   });
 
   // Simulated movement for demo purposes (no real GPS needed)
   simulateBtn.addEventListener('click', () => {
     const busId = document.getElementById('busId').value.trim();
-    if(!busId){ alert('Please enter a Bus ID first.'); return; }
+    if(!busId){ toast('Enter a Bus ID first.', true); return; }
     currentBusId = busId;
     setBroadcasting(true);
+    toast('Simulating movement for bus ' + busId + '.');
 
     let lat = DEFAULT_CENTER[0] + (Math.random()-0.5)*0.05;
     let lng = DEFAULT_CENTER[1] + (Math.random()-0.5)*0.05;
@@ -616,6 +755,7 @@
   }).addTo(passMap);
 
   const busMarkers = {};
+  const lastEtaText = {}; // busId -> previous eta string, used to trigger flap animation only on change
   let stopMarker = null;
   let stopLatLng = null;
   let droppingStop = false;
@@ -636,7 +776,7 @@
     if(stopMarker) passMap.removeLayer(stopMarker);
     const stopIcon = L.divIcon({
       className: '',
-      html: '<div style="background:#C63B2F;width:16px;height:16px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;"></div>',
+      html: '<div style="background:#E15241;width:16px;height:16px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #F5F1E7;"></div>',
       iconSize: [16,16]
     });
     stopMarker = L.marker(stopLatLng, {icon: stopIcon}).addTo(passMap).bindPopup('Your stop');
@@ -659,7 +799,7 @@
   function busIcon(){
     return L.divIcon({
       className: '',
-      html: '<div style="background:#0B1F3A;color:#FFB81C;width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;font-weight:bold;font-size:14px;border:2px solid #FFB81C;box-shadow:0 2px 6px rgba(0,0,0,0.3);">🚌</div>',
+      html: '<div style="background:#0F1E38;color:#FFC53D;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2px solid #FFC53D;box-shadow:0 2px 8px rgba(0,0,0,0.4);">🚌</div>',
       iconSize: [30,30],
       iconAnchor: [15,15]
     });
@@ -698,12 +838,12 @@
 
     // board
     if(filtered.length === 0){
-      board.innerHTML = '<div class="emptyState">No buses broadcasting yet.<br>Ask a driver to start broadcasting from the Driver tab.</div>';
+      board.innerHTML = '<div class="emptyState"><span class="big">No buses broadcasting</span>Ask a driver to start broadcasting from the Driver tab.</div>';
       return;
     }
 
     filtered.sort((a,b) => {
-      if(!stopLatLng) return a.route.localeCompare(b.route);
+      if(!stopLatLng) return (a.route||'').localeCompare(b.route||'');
       const da = haversine(stopLatLng.lat, stopLatLng.lng, a.lat, a.lng);
       const db = haversine(stopLatLng.lat, stopLatLng.lng, b.lat, b.lng);
       return da - db;
@@ -711,20 +851,23 @@
 
     board.innerHTML = filtered.map(b => {
       const routeShort = (b.route||'?').split(/[\s—-]/)[0].slice(0,3).toUpperCase();
-      let etaHtml = '<div class="boardEta">LIVE<span class="u">tracking</span></div>';
+      let etaMain = 'LIVE', etaSub = 'tracking';
       if(stopLatLng){
         const distM = haversine(stopLatLng.lat, stopLatLng.lng, b.lat, b.lng);
         const speedMs = b.speed && b.speed > 1 ? b.speed : 6; // assume ~22km/h if stationary
         const etaMin = Math.max(1, Math.round((distM/speedMs)/60));
         const distKm = (distM/1000).toFixed(1);
-        etaHtml = '<div class="boardEta">' + etaMin + ' min<span class="u">' + distKm + ' km away</span></div>';
+        etaMain = etaMin + ' min';
+        etaSub = distKm + ' km away';
       }
-      return '<div class="boardRow">' +
-        '<div class="routeChip">' + escapeHtml(routeShort) + '</div>' +
-        '<div class="boardMeta"><div class="name">' + escapeHtml(b.route||'Unassigned route') + '</div>' +
+      const changed = lastEtaText[b.busId] !== undefined && lastEtaText[b.busId] !== etaMain;
+      lastEtaText[b.busId] = etaMain;
+      return '<div class="flapRow">' +
+        '<div class="routeTile">' + escapeHtml(routeShort) + '</div>' +
+        '<div class="flapMeta"><div class="name">' + escapeHtml(b.route||'Unassigned route') + '</div>' +
         '<div class="sub">Bus ' + escapeHtml(b.busId) + ' · ' + escapeHtml(b.driver||'') + '</div></div>' +
-        etaHtml +
-        '<button class="followBtn" onclick="window.__followBus('+"'"+b.busId+"'"+')">Follow</button>' +
+        '<div class="flapEta' + (changed ? ' flap-anim' : '') + '">' + escapeHtml(etaMain) + '<span class="u">' + escapeHtml(etaSub) + '</span></div>' +
+        '<button class="followBtn" onclick="window.__followBus(\'' + b.busId.replace(/'/g,"\\'") + '\')">Track</button>' +
         '</div>';
     }).join('');
   }
