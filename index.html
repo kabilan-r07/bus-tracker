@@ -519,7 +519,7 @@
             <div class="metric"><div class="k">Route</div><div class="v" id="mRoute">–</div></div>
           </div>
 
-          <p class="hint">Your location broadcasts every ~5 seconds while active, and is visible to every passenger watching this route. If your browser blocks location access, use <b>Simulate movement</b> to demo the app instead.</p>
+          <p class="hint" id="wakeLockHint">Your location broadcasts every ~5 seconds while active, and is visible to every passenger watching this route. While broadcasting, this page will try to <b>keep your screen on</b> so tracking doesn't pause — please keep the app open (don't switch apps) for uninterrupted tracking. If your browser blocks location access, use <b>Simulate movement</b> to demo the app instead.</p>
           <button id="simulateBtn" class="btn btn-ghost">Simulate movement (demo)</button>
         </div>
       </div>
@@ -632,6 +632,46 @@
     } catch(e){ console.error('list failed', e); return []; }
   }
 
+  /* ---------------- WAKE LOCK (keeps the screen on while broadcasting) ---------------- */
+  // NOTE: This only prevents the screen from turning off *while this tab stays open and
+  // in the foreground*. It cannot make tracking survive the phone being fully locked or
+  // the browser being switched away from / closed — that requires a native app with
+  // background location permission. This is the best a plain website can do.
+  let wakeLock = null;
+
+  async function acquireWakeLock(){
+    if(!('wakeLock' in navigator)) {
+      toast('This browser doesn\'t support keeping the screen on automatically. Please keep the screen on manually while broadcasting.', true);
+      return;
+    }
+    try{
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        wakeLock = null;
+      });
+    } catch(err){
+      console.warn('Wake lock failed', err);
+    }
+  }
+
+  function releaseWakeLock(){
+    if(wakeLock){
+      wakeLock.release().catch(()=>{});
+      wakeLock = null;
+    }
+  }
+
+  // Wake locks are auto-released by the OS when the tab is hidden. Re-acquire it
+  // when the driver comes back to the tab, and warn them while it's gone.
+  document.addEventListener('visibilitychange', async () => {
+    if(document.visibilityState === 'visible' && isBroadcasting){
+      await acquireWakeLock();
+      toast('Back in view — screen wake-lock re-engaged, tracking resumed.');
+    } else if(document.visibilityState === 'hidden' && isBroadcasting){
+      toast('Tab is in the background — GPS updates may pause until you return to this tab.', true);
+    }
+  });
+
   /* ---------------- DRIVER LOGIC ---------------- */
   const driverMap = L.map('driverMap').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -654,14 +694,21 @@
   let watchId = null;
   let simInterval = null;
   let currentBusId = null;
+  let isBroadcasting = false;
 
   function setBroadcasting(on){
+    isBroadcasting = on;
     startBtn.style.display = on ? 'none' : 'inline-flex';
     stopBtn.style.display = on ? 'inline-flex' : 'none';
     drvRing.classList.toggle('live', on);
     drvLiveDot.classList.toggle('on', on);
     drvMapDot.classList.toggle('on', on);
     drvStatusText.textContent = on ? 'Broadcasting' : 'Offline';
+    if(on){
+      acquireWakeLock();
+    } else {
+      releaseWakeLock();
+    }
   }
 
   function updateDriverUI(lat, lng, speed, acc){
@@ -714,7 +761,7 @@
       { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
     );
     setBroadcasting(true);
-    toast('Broadcasting started for bus ' + busId + '.');
+    toast('Broadcasting started for bus ' + busId + '. Keep this tab open and the screen unlocked for continuous tracking.');
   });
 
   stopBtn.addEventListener('click', async () => {
